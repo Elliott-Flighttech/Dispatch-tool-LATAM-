@@ -150,9 +150,25 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-s
     <div class="field-grid two">
       <div class="field"><label>Spot / Bay</label><input type="text" id="spot" placeholder="W-51" oninput="this.value=this.value.toUpperCase();updatePreview()"></div>
       <div class="field">
-        <label>ETA / ETD — paste both (tab-separated)</label>
-        <input type="text" id="etapaste" placeholder="31/5/2026 7:25:00&#9;31/5/2026 9:35:00" oninput="parseEtaEtd();updatePreview()" autocomplete="off">
-        <div class="eta-badges" id="etaBadges"></div>
+        <label>ETA / ETD</label>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2);font-family:'DM Sans',sans-serif;">
+            <input type="checkbox" id="onGround" onchange="toggleOnGround()" style="width:15px;height:15px;cursor:pointer;accent-color:var(--green);">
+            🛬 AC is On Ground
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:4px;">ETA (paste from sheet)</div>
+            <input type="text" id="etaonly" placeholder="31/5/2026 7:25:00" oninput="parseEtaOnly();updatePreview()" autocomplete="off">
+            <div id="etaBadgeEta" style="margin-top:4px;"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:4px;">ETD (paste from sheet)</div>
+            <input type="text" id="etdonly" placeholder="31/5/2026 9:35:00" oninput="parseEtdOnly();updatePreview()" autocomplete="off">
+            <div id="etaBadgeEtd" style="margin-top:4px;"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -179,6 +195,15 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-s
     <div class="add-row">
       <input type="text" id="addM" placeholder="Add mechanic..." style="text-transform:uppercase;">
       <button class="btn-add" onclick="addPerson()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- COMMENTS -->
+  <div class="card">
+    <div class="card-title">💬 Notes / Comments</div>
+    <div class="field">
+      <label>General notes for this AC (will appear at the end of the message)</label>
+      <textarea id="comments" rows="3" placeholder="e.g. Aircraft arriving with deferred MEL item. Crew should coordinate with QA before departure." oninput="updatePreview()"></textarea>
     </div>
   </div>
 
@@ -294,22 +319,32 @@ function parseDateStr(s) {
 }
 function fmtDate(p) { return p ? `${p.d}/${p.mo}/${p.y} ${p.h}:${p.min}` : '—'; }
 
-function parseEtaEtd() {
-  const raw = document.getElementById('etapaste').value;
-  const parts = raw.split('\t');
-  parsedEta = parts[0] ? parseDateStr(parts[0]) : null;
-  parsedEtd = parts[1] ? parseDateStr(parts[1]) : null;
-  const el = document.getElementById('etaBadges');
+function parseEtaOnly() {
+  const raw = document.getElementById('etaonly').value;
+  parsedEta = raw.trim() ? parseDateStr(raw) : null;
+  const el = document.getElementById('etaBadgeEta');
   if (!raw.trim()) { el.innerHTML=''; return; }
-  let h = '';
-  if (parsedEta) h += `<span class="eta-badge ok">ETA ${fmtDate(parsedEta)}</span>`;
-  else if (parts[0]?.trim()) h += `<span class="eta-badge err">ETA: formato inválido</span>`;
-  if (parsedEtd) h += `<span class="eta-badge ok">ETD ${fmtDate(parsedEtd)}</span>`;
-  else if (parts[1]?.trim()) h += `<span class="eta-badge err">ETD: formato inválido</span>`;
-  el.innerHTML = h;
+  el.innerHTML = parsedEta
+    ? `<span class="eta-badge ok">ETA ${fmtDate(parsedEta)}</span>`
+    : `<span class="eta-badge err">Invalid format</span>`;
 }
-
-// ── CREW GRID ───────────────────────────────────────────
+function parseEtdOnly() {
+  const raw = document.getElementById('etdonly').value;
+  parsedEtd = raw.trim() ? parseDateStr(raw) : null;
+  const el = document.getElementById('etaBadgeEtd');
+  if (!raw.trim()) { el.innerHTML=''; return; }
+  el.innerHTML = parsedEtd
+    ? `<span class="eta-badge ok">ETD ${fmtDate(parsedEtd)}</span>`
+    : `<span class="eta-badge err">Invalid format</span>`;
+}
+function toggleOnGround() {
+  const og = document.getElementById('onGround').checked;
+  const etaInput = document.getElementById('etaonly');
+  etaInput.disabled = og;
+  etaInput.style.opacity = og ? '0.35' : '1';
+  if (og) { etaInput.value=''; parsedEta=null; document.getElementById('etaBadgeEta').innerHTML=''; }
+  updatePreview();
+}
 function renderGrid() {
   const g = document.getElementById('gridM');
   g.innerHTML = '';
@@ -450,8 +485,14 @@ function buildMessage() {
   msg += `━━━━━━━━━━━━━━━━━━━━\n`;
   msg += `🛩️  ${reg}${spot?'  |  📍 '+spot:''}\n`;
   if (wp) msg += `📋 WP#: ${wp}\n`;
-  msg += `⏰ ETA: ${fmtDate(parsedEta)}\n`;
-  msg += `🏁 ETD: ${fmtDate(parsedEtd)}\n`;
+  const onGround = document.getElementById('onGround').checked;
+  if (onGround) {
+    msg += `🛬 STATUS: ON GROUND\n`;
+    msg += `🏁 ETD: ${fmtDate(parsedEtd)}\n`;
+  } else {
+    msg += `⏰ ETA: ${fmtDate(parsedEta)}\n`;
+    msg += `🏁 ETD: ${fmtDate(parsedEtd)}\n`;
+  }
   msg += `━━━━━━━━━━━━━━━━━━━━\n`;
   if (charge)         msg += `👷 IN CHARGE: ${charge}\n`;
   if (assists.length) msg += `🔧 ASSISTANCE: ${assists.join(', ')}\n`;
@@ -474,6 +515,8 @@ function buildMessage() {
     });
   }
   msg += `━━━━━━━━━━━━━━━━━━━━`;
+  const comments = document.getElementById('comments').value.trim();
+  if (comments) msg += `\n\n📌 NOTES:\n${comments}`;
   return msg;
 }
 
@@ -522,7 +565,13 @@ function copyAll() {
 }
 
 function clearForm() {
-  ['reg','wp','spot','etapaste','taskPaste'].forEach(id=>document.getElementById(id).value='');
+  ['reg','wp','spot','etaonly','etdonly','taskPaste','comments'].forEach(id=>document.getElementById(id).value='');
+  parsedEta=null; parsedEtd=null;
+  document.getElementById('etaBadgeEta').innerHTML='';
+  document.getElementById('etaBadgeEtd').innerHTML='';
+  document.getElementById('onGround').checked = false;
+  const etaInput = document.getElementById('etaonly');
+  etaInput.disabled = false; etaInput.style.opacity = '1';
   parsedEta=null; parsedEtd=null;
   document.getElementById('etaBadges').innerHTML='';
   Object.keys(stateM).forEach(k=>stateM[k]=0);
